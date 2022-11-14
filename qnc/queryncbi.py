@@ -174,7 +174,7 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("-q", "--query", dest="query",
                         type=str, required=True, help="input keywords")
-    parser.add_argument("-o", "--output", dest="output_file", type=str, default=None,
+    parser.add_argument("-o", "--output", dest="output", type=str, default=None,
                         help="Output file")
     parser.add_argument("-y", "--year", dest="year", type=str, default=None,
                         help="year")
