@@ -11,15 +11,13 @@ import pandas as pd
 from datetime import date
 from Bio import Entrez, Medline
 
-logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", datefmt='%Y-%m-%d %A %H:%M:%S', level=logging.INFO)
-
 Entrez.email = "liqiming1914658215@gmail.com"                                      
 Entrez.api_key = "c80ce212c7179f0bbfbd88495a91dd356708"
 
 
 class QueryNCBI:
     __slots__ = ['keywords', 'mesh_topic', 'journal', 'year', 'from_date', 'to_date', 'retmax', 'db', 'count', 'idlist']
-    def __init__(self, keywords=None, mesh_topic=None, journal=None, year=None, from_date=None, to_date=date.today().strftime("%Y/%m/%d"), retmax=1000, db="pubmed"):
+    def __init__(self, keywords=None, mesh_topic=None, journal=None, year=None, from_date=None, to_date=date.today().strftime("%Y/%m/%d"), retmax=1000, db="pubmed", log=None):
         self.keywords = keywords
         self.mesh_topic = mesh_topic
         self.journal = journal
@@ -31,6 +29,7 @@ class QueryNCBI:
         self.db = db
         self.count = self.get_count()
         self.idlist = self.search()
+        logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", datefmt='%Y-%m-%d %A %H:%M:%S', level=logging.INFO, filename=log)
         logging.info(str(self))
 
     def __repr__(self):
@@ -191,6 +190,7 @@ def parse_args():
                         help="to_date")
     parser.add_argument("-r", "--retmax", dest="retmax", type=int, default=1000,
                         help="retmax")
+    parser.add_argument("--log", dest="log", type=str, default=None, help="log file")
     return parser
 
 
@@ -208,7 +208,8 @@ def run_pubmed():
         year=args.year,
         from_date=args.from_date,
         to_date=args.to_date,
-        retmax=args.retmax
+        retmax=args.retmax,
+        log=args.log
         )
     if args.output:
         query.download_pubmed_results(args.output)
@@ -225,7 +226,8 @@ def run_geo():
         from_date=args.from_date,
         to_date=args.to_date,
         retmax=args.retmax,
-        db="gds"
+        db="gds",
+        log=args.log
         )
     if args.output:
         query.download_geo_results(args.output, args.filter_species, args.filter_pmids)
