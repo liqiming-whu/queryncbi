@@ -147,8 +147,10 @@ class QueryNCBI:
         for record in cls.get_geo_summaries(idlist):
             id, gse, title, summary, species, date, samples, pmids, url = record
             if filter_specise is not None and species not in set(filter_specise):
+                logging.info(f"{gse} {species} not in {filter_specise}, skip")
                 continue
             if filter_pmids and not pmids:
+                logging.info(f"{gse} no pmids, skip")
                 continue
             data.append({
                 "ID": id,
