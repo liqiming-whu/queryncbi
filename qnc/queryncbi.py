@@ -147,6 +147,10 @@ class QueryNCBI:
         data = []
         for record in cls.get_geo_summaries(idlist):
             id, gse, title, summary, species, date, samples, pmids, url = record
+            if filter_specise is not None and species not in set(filter_specise):
+                continue
+            if filter_pmids and not pmids:
+                continue
             data.append({
                 "ID": id,
                 "GSE": gse,
@@ -159,11 +163,6 @@ class QueryNCBI:
                 "HTTP_Link": url
             })
         df = pd.DataFrame(data)
-
-        if filter_specise is not None:
-            df = df[df["Species"].isin(set(filter_specise))]
-        if filter_pmids:
-            df = df[df["PMIDS"] != ""]
         if path.endswith(".tsv"):
             df.to_csv(path, sep="\t")
         elif path.endswith(".xlsx") or path.endswith(".xls"):
