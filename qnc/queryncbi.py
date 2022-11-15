@@ -144,10 +144,12 @@ class QueryNCBI:
     @classmethod
     def download_geo_summaries(cls, idlist, path, filter_specise=None, filter_pmids=False):
         data = []
+        if filter_specise is not None:
+            filter_specise = re.compile("|".join(filter_specise))
         for record in cls.get_geo_summaries(idlist):
             id, gse, title, summary, species, date, samples, pmids, url = record
-            if filter_specise is not None and species not in set(filter_specise):
-                logging.info(f"{gse} {species} not in {filter_specise}, skip")
+            if filter_specise is not None and not filter_specise.search(species):
+                logging.info(f"{gse} {species} not in {filter_specise.pattern}, skip")
                 continue
             if filter_pmids and not pmids:
                 logging.info(f"{gse} no pmids, skip")
