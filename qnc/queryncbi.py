@@ -6,10 +6,12 @@ Author: https://github.com/liqiming-whu
 '''
 import re
 import argparse
-from datetime import date
+import logging
 import pandas as pd
+from datetime import date
 from Bio import Entrez, Medline
 
+logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", datefmt='%Y-%m-%d %A %H:%M:%S', level=logging.INFO)
 
 Entrez.email = "liqiming1914658215@gmail.com"                                      
 Entrez.api_key = "c80ce212c7179f0bbfbd88495a91dd356708"
@@ -29,7 +31,7 @@ class QueryNCBI:
         self.db = db
         self.count = self.get_count()
         self.idlist = self.search()
-        print(self)
+        logging.info(str(self))
 
     def __repr__(self):
         return f"Search '{self.query}', get {self.count} results."
@@ -79,7 +81,7 @@ class QueryNCBI:
             for record in records:
                 i += 1
                 pmid = record.get("PMID", "?")
-                print(f"Download {pmid} {i}/{id_count}")
+                logging.info(f"Download {pmid} {i}/{id_count}")
                 title = record.get("TI", "?")
                 abstract = record.get("AB", "?")
                 authors = ", ".join(record.get("AU", "?"))
@@ -122,12 +124,12 @@ class QueryNCBI:
         i = 0
         for id in idlist:
             i += 1
-            print(f"Download {id} {i}/{count}")
+            logging.info(f"Download {id} {i}/{count}")
             try:
                 handle = Entrez.esummary(db="gds", id=id)
                 record = Entrez.read(handle)[0]
             except Exception:
-                print(f"{id} connect error")
+                logging.warning(f"{id} connect error")
                 continue
             gse = record.get("Accession", "?")
             title = record.get("title", "?")
@@ -135,7 +137,7 @@ class QueryNCBI:
             species = record.get("taxon", "?")
             date = record.get("PDAT", "?")
             samples = [i['Accession'] for i in record.get("Samples", [])]
-            pmids = [int(i) for i in record.get("PubMedIds", [])]
+            pmids = ",".join(str(i) for i in record.get("PubMedIds", []))
             url = f"https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc={gse}"
             yield id, gse, title, summary, species, date, samples, pmids, url
 
