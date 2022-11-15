@@ -114,6 +114,7 @@ class QueryNCBI:
             df.to_excel(path)
         else:
             df.to_csv(path)
+        logging.info(f"save {df.shape[0]} records to {path}.")
 
     def download_pubmed_results(self, path):
         self.download_pubmed_detail(self.idlist, path)
@@ -142,7 +143,7 @@ class QueryNCBI:
             yield id, gse, title, summary, species, date, samples, pmids, url
 
     @classmethod
-    def download_geo_summaries(cls, idlist, path):
+    def download_geo_summaries(cls, idlist, path, filter_specise=None, filter_pmids=False):
         data = []
         for record in cls.get_geo_summaries(idlist):
             id, gse, title, summary, species, date, samples, pmids, url = record
@@ -158,16 +159,21 @@ class QueryNCBI:
                 "HTTP_Link": url
             })
         df = pd.DataFrame(data)
-   
+
+        if filter_specise is not None:
+            df = df[df["Species"].isin(set(filter_specise))]
+        if filter_pmids:
+            df = df[df["PMIDS"] != ""]
         if path.endswith(".tsv"):
             df.to_csv(path, sep="\t")
         elif path.endswith(".xlsx") or path.endswith(".xls"):
             df.to_excel(path)
         else:
             df.to_csv(path)
+        logging.info(f"save {df.shape[0]} records to {path}.")
 
     def download_geo_results(self, path):
-        self.download_geo_summaries(self.idlist, path)
+        self.download_geo_summaries(self.idlist, path, filter_specise=None, filter_pmids=False)
         
 
 def parse_args():
@@ -211,6 +217,8 @@ def run_pubmed():
 
 def run_geo():
     parser = parse_args()
+    parser.add_argument("--filter-species", dest="filter_species", nargs="+", type=str, default=None, help="filter species")
+    parser.add_argument("--filter-pmids", dest="filter_pmids", action="store_true", default=False, help="filter pmids")
     args = parser.parse_args()
     query = QueryNCBI(
         keywords=args.query,
@@ -221,7 +229,7 @@ def run_geo():
         db="gds"
         )
     if args.output:
-        query.download_geo_results(args.output)
+        query.download_geo_results(args.output, args.filter_species, args.filter_pmids)
 
 
 if __name__ == "__main__":
