@@ -171,8 +171,8 @@ class QueryNCBI:
             df.to_csv(path)
         logging.info(f"save {df.shape[0]} records to {path}.")
 
-    def download_geo_results(self, path):
-        self.download_geo_summaries(self.idlist, path, filter_specise=None, filter_pmids=False)
+    def download_geo_results(self, path, filter_specise=None, filter_pmids=False):
+        self.download_geo_summaries(self.idlist, path, filter_specise=filter_specise, filter_pmids=filter_pmids)
         
 
 def parse_args():
