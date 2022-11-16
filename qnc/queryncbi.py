@@ -9,6 +9,7 @@ import argparse
 import logging
 import pandas as pd
 from datetime import date
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from Bio import Entrez, Medline
 
 Entrez.email = "liqiming1914658215@gmail.com"                                      
@@ -16,8 +17,8 @@ Entrez.api_key = "c80ce212c7179f0bbfbd88495a91dd356708"
 
 
 class QueryNCBI:
-    __slots__ = ['keywords', 'mesh_topic', 'journal', 'year', 'from_date', 'to_date', 'retmax', 'db', 'count', 'idlist']
-    def __init__(self, keywords=None, mesh_topic=None, journal=None, year=None, from_date=None, to_date=date.today().strftime("%Y/%m/%d"), retmax=1000, db="pubmed", log=None):
+    __slots__ = ['keywords', 'mesh_topic', 'journal', 'year', 'from_date', 'to_date', 'retmax', 'db', 'count', 'idlist', 'threads']
+    def __init__(self, keywords=None, mesh_topic=None, journal=None, year=None, from_date=None, to_date=date.today().strftime("%Y/%m/%d"), retmax=1000, db="pubmed", log=None, threads=20):
         self.keywords = keywords
         self.mesh_topic = mesh_topic
         self.journal = journal
@@ -29,6 +30,7 @@ class QueryNCBI:
         self.db = db
         self.count = self.get_count()
         self.idlist = self.search()
+        self.threads = threads
         logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", datefmt='%Y-%m-%d %A %H:%M:%S', level=logging.INFO, filename=log)
         logging.info(str(self))
 
@@ -70,30 +72,44 @@ class QueryNCBI:
        return record["IdList"]
     
     @classmethod
-    def get_pubmed_detail(cls, idlist):
+    def get_pubmed_detail(cls, idlist, threads=20):
+        def fetch_task(id, i, count):
+            logging.info(f"Fetching {i*10000}-{i*10000+len(id)}/{count}...")
+            try:
+                handle = Entrez.efetch(db="pubmed", id=id, rettype="medline", retmode="text")
+                record = Medline.read(handle)
+            except Exception as e:
+                logging.warning(f"{i*10000}-{i*10000+len(id)}/{count} Expection: {e}")
+                record = None
+            return record
+        
         id_count = len(idlist)
         idlists = [idlist[i:i+10000] for i in range(0,id_count, 10000)] if id_count > 10000 else [idlist]
-        i = 0
-        for ids in idlists:
-            handle = Entrez.efetch(db="pubmed", id=ids, rettype="medline", retmode="text")
-            records = Medline.parse(handle)
-            for record in records:
-                i += 1
-                pmid = record.get("PMID", "?")
-                logging.info(f"Download {pmid} {i}/{id_count}")
-                title = record.get("TI", "?")
-                abstract = record.get("AB", "?")
-                authors = ", ".join(record.get("AU", "?"))
-                journal = record.get("TA", "?")
-                pub_date = record.get("DP", "?")
-                source = record.get("SO", "?")
-                url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}"
-                yield pmid, title, abstract, authors, journal, pub_date, source, url
+        workers = min(threads, len(idlists))
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            task_quene = [executor.submit(fetch_task, ids, i, id_count) for i, ids in enumerate(idlists)]
+            i = 0
+            for task in as_completed(task_quene):
+                records = task.result()
+                if records is None:
+                    continue
+                for record in records:
+                    i += 1
+                    pmid = record.get("PMID", "?")
+                    logging.info(f"Download {pmid} {i}/{id_count}")
+                    title = record.get("TI", "?")
+                    abstract = record.get("AB", "?")
+                    authors = ", ".join(record.get("AU", "?"))
+                    journal = record.get("TA", "?")
+                    pub_date = record.get("DP", "?")
+                    source = record.get("SO", "?")
+                    url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}"
+                    yield pmid, title, abstract, authors, journal, pub_date, source, url
     
     @classmethod
-    def download_pubmed_detail(cls, idlist, path):
+    def download_pubmed_detail(cls, idlist, path, threads=20):
         data = []
-        for record in cls.get_pubmed_detail(idlist):
+        for record in cls.get_pubmed_detail(idlist, threads):
             pmid, title, abstract, au, jour, date, source, url = record
             data.append({
                 "PubMed_ID": pmid,
@@ -116,38 +132,54 @@ class QueryNCBI:
         logging.info(f"save {df.shape[0]} records to {path}.")
 
     def download_pubmed_results(self, path):
-        self.download_pubmed_detail(self.idlist, path)
+        self.download_pubmed_detail(self.idlist, path, self.threads)
 
     @classmethod
-    def get_geo_summaries(cls, idlist):
-        count = len(idlist)
-        i = 0
-        for id in idlist:
-            i += 1
+    def get_geo_summaries(cls, idlist, threads=20):
+        def fetch_task(id, i, count):
             logging.info(f"Download {id} {i}/{count}")
             try:
                 handle = Entrez.esummary(db="gds", id=id)
                 record = Entrez.read(handle)[0]
-            except Exception:
-                logging.warning(f"{id} connect error")
-                continue
-            gse = record.get("Accession", "?")
-            title = record.get("title", "?")
-            summary = record.get("summary", "?")
-            species = record.get("taxon", "?")
-            date = record.get("PDAT", "?")
-            samples = [i['Accession'] for i in record.get("Samples", [])]
-            pmids = ",".join(str(i) for i in record.get("PubMedIds", []))
-            url = f"https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc={gse}"
-            yield id, gse, title, summary, species, date, samples, pmids, url
+            except Exception as e:
+                logging.warning(f"{id} Exception: {e}")
+                record = None
+            return record
+        count = len(idlist)
+        with ThreadPoolExecutor(max_workers=threads) as executor:
+            task_quene = [executor.submit(fetch_task, id, i+1, count) for i, id in enumerate(idlist)]
+            def iter_resluts():
+                ite = as_completed(task_quene, timeout=60)
+                i = 0
+                while True:
+                    i += 1
+                    try:
+                        yield next(ite).result()
+                    except TimeoutError:
+                        logging.warning(f"{idlist[i-1]} timeout.")
+                        continue
+                    except StopIteration:
+                        break
+            for record in iter_resluts():
+                if record is None:
+                    continue
+                gse = record.get("Accession", "?")
+                title = record.get("title", "?")
+                summary = record.get("summary", "?")
+                species = record.get("taxon", "?")
+                date = record.get("PDAT", "?")
+                samples = ",".join(i['Accession'] for i in record.get("Samples", []))
+                pmids = ",".join(str(int(i)) for i in record.get("PubMedIds", []))
+                url = f"https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc={gse}"
+                yield gse, title, summary, species, date, samples, pmids, url
 
     @classmethod
-    def download_geo_summaries(cls, idlist, path, filter_specise=None, filter_pmids=False):
+    def download_geo_summaries(cls, idlist, path, filter_specise=None, filter_pmids=False, threads=20):
         data = []
         if filter_specise is not None:
             filter_specise = re.compile("|".join(filter_specise))
-        for record in cls.get_geo_summaries(idlist):
-            id, gse, title, summary, species, date, samples, pmids, url = record
+        for record in cls.get_geo_summaries(idlist, threads):
+            gse, title, summary, species, date, samples, pmids, url = record
             if filter_specise is not None and not filter_specise.search(species):
                 logging.info(f"{gse} {species} not in {filter_specise.pattern}, skip")
                 continue
@@ -155,7 +187,6 @@ class QueryNCBI:
                 logging.info(f"{gse} no pmids, skip")
                 continue
             data.append({
-                "ID": id,
                 "GSE": gse,
                 "Title": title,
                 "Summary": summary,
@@ -175,7 +206,7 @@ class QueryNCBI:
         logging.info(f"save {df.shape[0]} records to {path}.")
 
     def download_geo_results(self, path, filter_specise=None, filter_pmids=False):
-        self.download_geo_summaries(self.idlist, path, filter_specise=filter_specise, filter_pmids=filter_pmids)
+        self.download_geo_summaries(self.idlist, path, filter_specise=filter_specise, filter_pmids=filter_pmids, threads=self.threads)
         
 
 def parse_args():
@@ -195,6 +226,7 @@ def parse_args():
     parser.add_argument("-r", "--retmax", dest="retmax", type=int, default=1000,
                         help="retmax")
     parser.add_argument("--log", dest="log", type=str, default=None, help="log file")
+    parser.add_argument("--threads", dest="threads", type=int, default=20, help="threads")
     return parser
 
 
@@ -213,7 +245,8 @@ def run_pubmed():
         from_date=args.from_date,
         to_date=args.to_date,
         retmax=args.retmax,
-        log=args.log
+        log=args.log,
+        threads=args.threads
         )
     if args.output:
         query.download_pubmed_results(args.output)
@@ -231,7 +264,8 @@ def run_geo():
         to_date=args.to_date,
         retmax=args.retmax,
         db="gds",
-        log=args.log
+        log=args.log,
+        threads=args.threads
         )
     if args.output:
         query.download_geo_results(args.output, args.filter_species, args.filter_pmids)
