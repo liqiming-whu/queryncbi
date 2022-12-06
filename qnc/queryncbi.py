@@ -73,38 +73,57 @@ class QueryNCBI:
     
     @classmethod
     def get_pubmed_detail(cls, idlist, threads=20):
-        def fetch_task(id, i, count):
-            logging.info(f"Fetching {i*10000}-{i*10000+len(id)}/{count}...")
-            try:
-                handle = Entrez.efetch(db="pubmed", id=id, rettype="medline", retmode="text")
-                record = Medline.read(handle)
-            except Exception as e:
-                logging.warning(f"{i*10000}-{i*10000+len(id)}/{count} Expection: {e}")
-                record = None
-            return record
-        
         id_count = len(idlist)
         idlists = [idlist[i:i+10000] for i in range(0,id_count, 10000)] if id_count > 10000 else [idlist]
-        workers = min(threads, len(idlists))
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            task_quene = [executor.submit(fetch_task, ids, i, id_count) for i, ids in enumerate(idlists)]
-            i = 0
-            for task in as_completed(task_quene):
-                records = task.result()
-                if records is None:
-                    continue
-                for record in records:
-                    i += 1
-                    pmid = record.get("PMID", "?")
-                    logging.info(f"Download {pmid} {i}/{id_count}")
-                    title = record.get("TI", "?")
-                    abstract = record.get("AB", "?")
-                    authors = ", ".join(record.get("AU", "?"))
-                    journal = record.get("TA", "?")
-                    pub_date = record.get("DP", "?")
-                    source = record.get("SO", "?")
-                    url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}"
-                    yield pmid, title, abstract, authors, journal, pub_date, source, url
+        i = 0
+        for ids in idlists:
+            handle = Entrez.efetch(db="pubmed", id=ids, rettype="medline", retmode="text")
+            records = Medline.parse(handle)
+            for record in records:
+                i += 1
+                pmid = record.get("PMID", "?")
+                logging.info(f"Download {pmid} {i}/{id_count}")
+                title = record.get("TI", "?")
+                abstract = record.get("AB", "?")
+                authors = ", ".join(record.get("AU", "?"))
+                journal = record.get("TA", "?")
+                pub_date = record.get("DP", "?")
+                source = record.get("SO", "?")
+                url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}"
+                yield pmid, title, abstract, authors, journal, pub_date, source, url
+        # def fetch_task(id, i, count):
+        #     logging.info(f"Fetching {i*10000}-{i*10000+len(id)}/{count}...")
+        #     try:
+        #         handle = Entrez.efetch(db="pubmed", id=id, rettype="medline", retmode="text")
+        #         record = Medline.read(handle)
+        #         print(record)
+        #     except Exception as e:
+        #         logging.warning(f"{i*10000}-{i*10000+len(id)}/{count} Expection: {e}")
+        #         record = None
+        #     return record
+        
+        # id_count = len(idlist)
+        # idlists = [idlist[i:i+10000] for i in range(0,id_count, 10000)] if id_count > 10000 else [idlist]
+        # workers = min(threads, len(idlists))
+        # with ThreadPoolExecutor(max_workers=workers) as executor:
+        #     task_quene = [executor.submit(fetch_task, ids, i, id_count) for i, ids in enumerate(idlists)]
+        #     i = 0
+        #     for task in as_completed(task_quene):
+        #         records = task.result()
+        #         if records is None:
+        #             continue
+        #         for record in records:
+        #             i += 1
+        #             pmid = record.get("PMID", "?")
+        #             logging.info(f"Download {pmid} {i}/{id_count}")
+        #             title = record.get("TI", "?")
+        #             abstract = record.get("AB", "?")
+        #             authors = ", ".join(record.get("AU", "?"))
+        #             journal = record.get("TA", "?")
+        #             pub_date = record.get("DP", "?")
+        #             source = record.get("SO", "?")
+        #             url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}"
+        #             yield pmid, title, abstract, authors, journal, pub_date, source, url
     
     @classmethod
     def download_pubmed_detail(cls, idlist, path, threads=20):
