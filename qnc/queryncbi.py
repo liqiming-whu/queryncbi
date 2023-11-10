@@ -83,14 +83,18 @@ class QueryNCBI:
                 i += 1
                 pmid = record.get("PMID", "?")
                 logging.info(f"Download {pmid} {i}/{id_count}")
-                title = record.get("TI", "?")
-                abstract = record.get("AB", "?")
-                authors = ", ".join(record.get("AU", "?"))
-                journal = record.get("TA", "?")
-                pub_date = record.get("DP", "?")
-                source = record.get("SO", "?")
-                url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}"
-                yield pmid, title, abstract, authors, journal, pub_date, source, url
+                try:
+                    title = record.get("TI", "?")
+                    abstract = record.get("AB", "?")
+                    authors = ", ".join(record.get("AU", "?"))
+                    journal = record.get("TA", "?")
+                    pub_date = record.get("DP", "?")
+                    source = record.get("SO", "?")
+                    url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}"
+                    yield pmid, title, abstract, authors, journal, pub_date, source, url
+                except Exception as e:
+                    logging.warning(f"Download {pmid} failed. Exception: {e}")
+                    continue
         # def fetch_task(id, i, count):
         #     logging.info(f"Fetching {i*10000}-{i*10000+len(id)}/{count}...")
         #     try:
